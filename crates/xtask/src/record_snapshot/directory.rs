@@ -56,6 +56,7 @@ impl StagedDirClaim {
                 | rustix::fs::Mode::ROTH
                 | rustix::fs::Mode::WOTH,
         )?;
+        super::staging::ensure_owner_read_write(&fd)?;
         std::fs::File::from(fd).write_all(bytes)
     }
 

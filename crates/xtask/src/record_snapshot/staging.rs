@@ -86,6 +86,17 @@ pub(super) fn stage_in_with(
     staged
 }
 
+/// Puts owner read and write back on `file` after a `0o666` create.
+///
+/// The process umask can strip those bits. Group and other stay as that
+/// umask left them.
+#[cfg(unix)]
+pub(super) fn ensure_owner_read_write(file: impl rustix::fd::AsFd) -> std::io::Result<()> {
+    let mode = rustix::fs::Mode::from_raw_mode(rustix::fs::fstat(&file)?.st_mode);
+    rustix::fs::fchmod(file, mode | rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR)
+        .map_err(Into::into)
+}
+
 #[cfg(unix)]
 fn entry_name(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
     path.file_name().ok_or_else(|| {
@@ -98,6 +109,8 @@ fn entry_name(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
 
 fn stage_file(file: std::fs::File, path: &Path, bytes: &[u8]) -> std::io::Result<StagedFile> {
     let result = (|| {
+        #[cfg(unix)]
+        ensure_owner_read_write(&file)?;
         let mut writer = std::io::BufWriter::new(&file);
         writer.write_all(bytes)?;
         writer.flush()?;
