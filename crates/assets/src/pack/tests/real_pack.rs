@@ -215,6 +215,19 @@ fn real_pack_loads_and_every_typed_accessor_works() {
             .unwrap_or_else(|e| panic!("text-window extra palette {n} should be in the pack: {e}"));
         assert_eq!(palette.color_count, EXPECTED_PALETTE_COLOR_COUNT);
     }
+
+    let naming = pack
+        .naming_screen()
+        .expect("naming-screen graphics should be in the pack");
+    assert_eq!((naming.menu.width, naming.menu.height), (24, 128));
+    assert_eq!(naming.background.len(), 32 * 20 * 2);
+    assert_eq!(naming.keyboard_upper.len(), naming.background.len());
+    assert_eq!(naming.brendan.image.width, 144);
+    assert_eq!(naming.may.image.height, 32);
+    assert_eq!(
+        naming.text_palette.color_count,
+        EXPECTED_PALETTE_COLOR_COUNT
+    );
 }
 
 /// Keep expected sample ids independent of the extractor's manifest.

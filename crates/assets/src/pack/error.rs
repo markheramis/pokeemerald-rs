@@ -114,6 +114,13 @@ pub enum PackError {
         /// What differs from the expected shape.
         detail: String,
     },
+    /// A naming-screen entry differs from the upstream graphic's shape.
+    MalformedNamingScreenAsset {
+        /// Asset id.
+        id: String,
+        /// What differs from the expected shape.
+        detail: String,
+    },
     /// A Pokédex graphics entry differs from the upstream graphic's shape.
     MalformedPokedexGraphic {
         /// Asset id.
@@ -270,6 +277,9 @@ impl fmt::Display for PackError {
             Self::MalformedOpeningSceneAsset { id, detail } => {
                 write!(f, "asset pack: opening-scene entry `{id}` {detail}")
             }
+            Self::MalformedNamingScreenAsset { id, detail } => {
+                write!(f, "asset pack: naming-screen entry `{id}` {detail}")
+            }
             Self::MalformedPokedexGraphic { id, detail } => {
                 write!(f, "asset pack: Pokédex graphics entry `{id}` {detail}")
             }
@@ -332,6 +342,7 @@ impl std::error::Error for PackError {
             | Self::MalformedTrainerPicAsset { .. }
             | Self::UnsupportedTrainerPic(_)
             | Self::MalformedOpeningSceneAsset { .. }
+            | Self::MalformedNamingScreenAsset { .. }
             | Self::MalformedPokedexGraphic { .. }
             | Self::MalformedBattleInterfaceAsset { .. }
             | Self::MalformedBagAsset { .. } => None,

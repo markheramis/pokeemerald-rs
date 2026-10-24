@@ -17,7 +17,7 @@ members = [
 edition = "2021"
 # Keep this in lockstep with rust-toolchain.toml in a dedicated maintenance PR.
 rust-version = "1.97.1"
-version = "0.0.68+gamepatch.9"
+version = "0.0.68+gamepatch.10"
 publish = false
 
 # Workspace-wide lints (F-2). Inherited by every member via `[lints] workspace = true`.
