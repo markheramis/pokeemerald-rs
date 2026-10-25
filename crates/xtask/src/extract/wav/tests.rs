@@ -519,6 +519,35 @@ fn loop_start_at_or_past_the_derived_size_is_rejected() {
 }
 
 #[test]
+fn agbl_past_the_sampler_end_does_not_pull_in_excluded_samples() {
+    // smpl inclusive end 2 => wav2agb payload is samples 0..3 then zero
+    // alignment padding (converter.cpp:77-90); agbl only changes the header
+    // (converter.cpp:399-401). Raw bytes past that end must not become
+    // logical samples, including once agbl passes the next 4-byte boundary.
+    let data = [128u8, 129, 130, 131, 132, 133];
+    let smpl = smpl_chunk(60, 0, 1, 2);
+    let at_boundary = build_wav(
+        PCM_U8,
+        8000,
+        &[(b"smpl", &smpl), (b"agbl", &u32_chunk(4))],
+        &data,
+    );
+    let at_boundary = decode(&at_boundary).unwrap();
+    assert_eq!(at_boundary.sample_count, 4);
+    assert_eq!(at_boundary.data, vec![0, 1, 2, 0, 0]);
+
+    let past_boundary = build_wav(
+        PCM_U8,
+        8000,
+        &[(b"smpl", &smpl), (b"agbl", &u32_chunk(6))],
+        &data,
+    );
+    let past_boundary = decode(&past_boundary).unwrap();
+    assert_eq!(past_boundary.sample_count, 6);
+    assert_eq!(past_boundary.data, vec![0, 1, 2, 0, 0, 0, 0]);
+}
+
+#[test]
 fn each_sample_format_reports_its_encoded_width() {
     assert_eq!(SampleFormat::U8.bytes_per_sample(), 1);
     assert_eq!(SampleFormat::S16.bytes_per_sample(), 2);
