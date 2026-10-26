@@ -65,6 +65,8 @@ const PURSUIT: MoveId = MoveId::PURSUIT;
 const UNKNOWN_MOVE: MoveId = MoveId(60_000);
 /// Normal-type (physical), 75 accuracy.
 const SLAM: MoveId = MoveId::SLAM;
+/// `MOVE_MUD_SHOT` -- `EFFECT_SPEED_DOWN_HIT`, Ground, certain secondary.
+const MUD_SHOT: MoveId = MoveId::MUD_SHOT;
 
 const THICK_FAT: AbilityId = AbilityId::THICK_FAT;
 /// `SPECIES_SHEDINJA`: Wonder Guard in its primary (and only) ability slot.
@@ -380,6 +382,32 @@ fn wonder_guard_blocks_a_neutral_hit_and_still_draws_normally() {
         ORDINARY_NON_CRITICAL_DRAWS.len(),
         "a Wonder Guard block still spends the same draws as an ordinary hit"
     );
+}
+
+/// Levitate sets `MOVE_RESULT_MISSED | MOVE_RESULT_DOESNT_AFFECT_FOE`
+/// (`battle_script_commands.c:1375-1378`), so `seteffectwithchance` spends
+/// its draw but skips `SetMoveEffect` (`:2923-2930`).
+#[test]
+fn levitate_blocked_mud_shot_applies_no_speed_drop() {
+    let dex = Dex::new();
+    let attacker = mon(&dex, BULBASAUR, 20, vec![MUD_SHOT]);
+    let levitate_defender = mon(&dex, GASTLY, 20, vec![TACKLE]);
+    assert_eq!(levitate_defender.ability(), AbilityId::LEVITATE);
+    let mut rng = SequenceRng::new(ORDINARY_NON_CRITICAL_DRAWS);
+
+    let resolution = resolve_hit(
+        &dex,
+        MUD_SHOT,
+        &attacker,
+        &levitate_defender,
+        false,
+        &mut rng,
+    )
+    .unwrap();
+
+    assert_eq!(resolution.outcome, HitOutcome::LevitateBlocked);
+    assert_eq!(rng.draws(), ORDINARY_NON_CRITICAL_DRAWS.len());
+    assert_eq!(resolution.secondary_effect, SecondaryApplication::None);
 }
 
 /// Wonder Guard's own message (`B_MSG_AVOIDED_DMG`, index 3) outranks the
