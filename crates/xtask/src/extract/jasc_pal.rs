@@ -32,6 +32,9 @@ pub enum JascPalError {
     TooManyColors { max: usize, declared: usize },
     /// The file contains fewer colors than it declares.
     TooFewColors { expected: usize, found: usize },
+    /// Bytes remain after the declared color records. Upstream `gbagfx`
+    /// rejects any byte past the last declared color (`jasc_pal.c`).
+    TrailingGarbage,
     /// A color entry is not three RGB channels in the supported range. The
     /// contained index is one-based within the color entries.
     BadColorLine(usize),
@@ -56,6 +59,7 @@ impl fmt::Display for JascPalError {
                     "JASC-PAL: header declared {expected} colours, found {found}"
                 )
             }
+            Self::TrailingGarbage => write!(f, "JASC-PAL: garbage after colour data"),
             Self::BadColorLine(line) => write!(f, "JASC-PAL: malformed colour on line {line}"),
         }
     }
@@ -88,12 +92,14 @@ impl Rgb888 {
 
 /// Parses the colors declared by a JASC-PAL palette.
 ///
-/// Both LF and CRLF line endings are accepted.
+/// Both LF and CRLF line endings are accepted. A valid file may end on the
+/// last color record or on the newline that terminates it. Anything after
+/// that record — another color, a blank line, or other text — is rejected.
 ///
 /// # Errors
 ///
-/// Returns [`JascPalError`] when the header, count, or a declared color is
-/// invalid.
+/// Returns [`JascPalError`] when the header, count, a declared color, or
+/// trailing data is invalid.
 pub fn parse(text: &str) -> Result<Vec<Rgb888>, JascPalError> {
     let mut lines = text.lines();
 
@@ -128,6 +134,9 @@ pub fn parse(text: &str) -> Result<Vec<Rgb888>, JascPalError> {
             expected: declared_color_count,
             found: colors.len(),
         });
+    }
+    if lines.next().is_some() {
+        return Err(JascPalError::TrailingGarbage);
     }
     Ok(colors)
 }
@@ -184,6 +193,26 @@ mod tests {
     fn lf_only_line_endings_also_parse() {
         let text = SAMPLE.replace("\r\n", "\n");
         assert_eq!(parse(&text).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn rejects_trailing_garbage_after_declared_colors() {
+        let err = parse("JASC-PAL\r\n0100\r\n1\r\n0 0 0\r\ngarbage\r\n").unwrap_err();
+        assert_eq!(err, JascPalError::TrailingGarbage);
+    }
+
+    #[test]
+    fn rejects_extra_color_record_after_declared_count() {
+        let err = parse("JASC-PAL\r\n0100\r\n1\r\n0 0 0\r\n255 255 255\r\n").unwrap_err();
+        assert_eq!(err, JascPalError::TrailingGarbage);
+    }
+
+    #[test]
+    fn rejects_trailing_blank_line_after_declared_colors() {
+        let crlf = parse("JASC-PAL\r\n0100\r\n1\r\n0 0 0\r\n\r\n").unwrap_err();
+        let lf = parse("JASC-PAL\n0100\n1\n0 0 0\n\n").unwrap_err();
+        assert_eq!(crlf, JascPalError::TrailingGarbage);
+        assert_eq!(lf, JascPalError::TrailingGarbage);
     }
 
     #[test]
