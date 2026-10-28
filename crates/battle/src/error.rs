@@ -134,9 +134,17 @@ pub enum BattleError {
 
     /// A trainer battle was constructed with an empty opponent party.
     EmptyTrainerParty(TrainerId),
+
+    /// `ShouldSwitchIfNaturalCure` would index `gBattleMoves[MOVE_UNAVAILABLE]`
+    /// after its coin came up tails (`pokeemerald/src/battle_ai_switch_items.c:227`-`:236`).
+    /// That index is outside the pinned move table, so the read is refused
+    /// instead of inventing a power. The coin that reached the read has
+    /// already been drawn.
+    UndefinedNaturalCureLandedMove,
 }
 
 impl fmt::Display for BattleError {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::StatStageOutOfRange(offset) => {
@@ -234,6 +242,10 @@ impl fmt::Display for BattleError {
             Self::EmptyTrainerParty(id) => {
                 write!(f, "trainer `{}` has an empty party", id.0)
             }
+            Self::UndefinedNaturalCureLandedMove => write!(
+                f,
+                "natural cure switch would read gBattleMoves[MOVE_UNAVAILABLE], which is not defined"
+            ),
         }
     }
 }

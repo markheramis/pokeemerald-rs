@@ -104,7 +104,18 @@ impl BattlerState {
     /// Sets a Perish Song countdown. No move produces one yet, so only tests
     /// install it.
     #[cfg(test)]
-    pub(super) fn set_perish_song(&mut self, turns: Option<PerishSongTurns>) {
+    pub(crate) fn set_perish_song(&mut self, turns: Option<PerishSongTurns>) {
         self.perish_song = turns;
+    }
+
+    /// Installs `gLastLandedMoves` and `gLastHitBy` for a switch-probe test.
+    #[cfg(test)]
+    pub(crate) fn set_last_landed_move(
+        &mut self,
+        landed: LastLandedMove,
+        hitter: Option<BattlerSide>,
+    ) {
+        self.last_landed_move = landed;
+        self.last_hitter = hitter;
     }
 }

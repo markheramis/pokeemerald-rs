@@ -4,6 +4,10 @@ Concise patch notes for development versions, carried from `dev` through the rel
 
 [`RELEASE.md` §Changelog](RELEASE.md#changelog) owns the update policy and entry format. Versions follow the repository's `FINAL.MAJOR.MINOR.PATCH` scheme.
 
+## [0.0.79.0] - 2026-10-28
+
+- Opposing trainers with another healthy Pokémon may switch out before choosing a move.
+
 ## [0.0.78.0] - 2026-10-27
 
 - The Bag now shows a TM or HM's move type, power, accuracy and PP while its menu is open.
@@ -373,6 +377,7 @@ Concise patch notes for development versions, carried from `dev` through the rel
 
 - Initial prerelease establishing the repository release path, with an early title screen, new-game introduction, and exploration of the opening area.
 
+[0.0.79.0]: https://github.com/LunchBox951/pokeemerald-rs/compare/d828e8ae72b532a2de0148cbf62942cd0805b7ec...dev
 [0.0.78.0]: https://github.com/LunchBox951/pokeemerald-rs/compare/7bb89a891a17166542bca78a24db79325000dae9...dev
 [0.0.77.0]: https://github.com/LunchBox951/pokeemerald-rs/compare/1bd4a0c1485db83589e2cf761f83c6c9cd37c2c6...7bb89a891a17166542bca78a24db79325000dae9
 [0.0.76.0]: https://github.com/LunchBox951/pokeemerald-rs/compare/42b847579ee1ed8368ccf8fb64f932a7c9bd82f3...1bd4a0c1485db83589e2cf761f83c6c9cd37c2c6

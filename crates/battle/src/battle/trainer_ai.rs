@@ -69,6 +69,10 @@ const SUPPORTED_AI_FLAGS: u32 = AiFlags::CHECK_BAD_MOVE.bits()
     | AiFlags::CHECK_VIABILITY.bits()
     | AiFlags::SETUP_FIRST_TURN.bits();
 
+mod switch;
+
+pub(crate) use switch::SwitchFacts;
+
 /// Effect IDs `AI_TryToFaint` and `AI_CV_Sweeper`'s most-powerful-move
 /// comparison treats as powerless (`sIgnoredPowerfulMoveEffects`,
 /// `src/battle_ai_script_commands.c:266-280`): Explosion, Dream Eater, Razor
@@ -369,10 +373,11 @@ const SCORING_SCRIPTS_IN_FLAG_ORDER: [(AiFlags, ScoringScript); 4] = [
 
 /// Chooses a trainer opponent's action after validating its AI flags.
 ///
-/// Scoring consumes four simulated-damage draws, runs enabled scripts in
-/// ascending flag order, and consumes one final tie-break draw. A two-ability
-/// `CheckBadMove` target is refused before any draw (see the module docs). A trainer
-/// with no usable move returns Struggle without drawing.
+/// With no bench, scoring consumes four simulated-damage draws, runs enabled
+/// scripts in ascending flag order, and consumes one final tie-break draw.
+/// [`choose_trainer_action_with_switch`] may draw switch probes before that.
+/// A two-ability `CheckBadMove` target is refused before any draw (see the
+/// module docs). A trainer with no usable move returns Struggle without drawing.
 ///
 /// # Errors
 ///
@@ -380,12 +385,41 @@ const SCORING_SCRIPTS_IN_FLAG_ORDER: [(AiFlags, ScoringScript); 4] = [
 /// not run the trainer admission checks first, or
 /// [`BattleError::AmbiguousPlayerAbility`] for a two-ability `player` scored by
 /// `CheckBadMove`.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "scoring tests call the no-bench entry; battles pass a party to choose_trainer_action_with_switch"
+    )
+)]
 pub(crate) fn choose_trainer_action(
     dex: &Dex,
     enemy: &BattlePokemon,
     player: &BattlePokemon,
     ai_flags: AiFlags,
     turn_counter: u8,
+    rng: &mut impl BattleRng,
+) -> Result<EnemyAction, BattleError> {
+    choose_trainer_action_with_switch(dex, enemy, player, ai_flags, turn_counter, None, rng)
+}
+
+/// [`choose_trainer_action`] after `ShouldSwitch` when `switch` is present.
+///
+/// A healthy bench draws the switch probes before [`MoveScores::initialize`].
+/// No healthy bench draws nothing for the switch and keeps scoring parity.
+///
+/// # Errors
+///
+/// See [`choose_trainer_action`]. Also returns
+/// [`BattleError::UndefinedNaturalCureLandedMove`] when Natural Cure would
+/// read an undefined last-landed move, after that probe's coin.
+pub(crate) fn choose_trainer_action_with_switch(
+    dex: &Dex,
+    enemy: &BattlePokemon,
+    player: &BattlePokemon,
+    ai_flags: AiFlags,
+    turn_counter: u8,
+    switch: Option<SwitchFacts<'_>>,
     rng: &mut impl BattleRng,
 ) -> Result<EnemyAction, BattleError> {
     ensure_supported_flags(ai_flags)?;
@@ -400,6 +434,12 @@ pub(crate) fn choose_trainer_action(
     }
     if ai_flags.contains(AiFlags::CHECK_BAD_MOVE) {
         ensure_target_ability_unambiguous(player)?;
+    }
+
+    if let Some(facts) = switch {
+        if let Some(slot) = switch::consider_switch(dex, enemy, player, &facts, rng)? {
+            return Ok(EnemyAction::Switch(slot));
+        }
     }
 
     let mut scores = MoveScores::initialize(enemy, rng);
