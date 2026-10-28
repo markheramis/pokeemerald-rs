@@ -372,7 +372,9 @@ const SCORING_SCRIPTS_IN_FLAG_ORDER: [(AiFlags, ScoringScript); 4] = [
 /// Scoring consumes four simulated-damage draws, runs enabled scripts in
 /// ascending flag order, and consumes one final tie-break draw. A two-ability
 /// `CheckBadMove` target is refused before any draw (see the module docs). A trainer
-/// with no usable move returns Struggle without drawing.
+/// with no usable move returns Struggle without drawing. This entry has no
+/// party, so it never runs the voluntary-switch probes; battles with a bench
+/// use [`choose_trainer_action_in_battle`].
 ///
 /// # Errors
 ///
@@ -380,7 +382,48 @@ const SCORING_SCRIPTS_IN_FLAG_ORDER: [(AiFlags, ScoringScript); 4] = [
 /// not run the trainer admission checks first, or
 /// [`BattleError::AmbiguousPlayerAbility`] for a two-ability `player` scored by
 /// `CheckBadMove`.
+#[cfg(test)]
 pub(crate) fn choose_trainer_action(
+    dex: &Dex,
+    enemy: &BattlePokemon,
+    player: &BattlePokemon,
+    ai_flags: AiFlags,
+    turn_counter: u8,
+    rng: &mut impl BattleRng,
+) -> Result<EnemyAction, BattleError> {
+    choose_trainer_action_in_battle(dex, enemy, player, ai_flags, turn_counter, None, rng)
+}
+
+/// [`choose_trainer_action`] after the switch half of `AI_TrySwitchOrUseItem`.
+///
+/// A selected bench slot returns before Struggle, score admission, the
+/// `CheckBadMove` ability refusal, and the four simulated-damage draws. No
+/// healthy bench member skips every probe without drawing.
+///
+/// # Errors
+///
+/// Returns the errors of [`choose_trainer_action`], or
+/// [`BattleError::UndefinedNaturalCureMove`] when Natural Cure would read
+/// `MOVE_UNAVAILABLE`.
+pub(crate) fn choose_trainer_action_in_battle(
+    dex: &Dex,
+    enemy: &BattlePokemon,
+    player: &BattlePokemon,
+    ai_flags: AiFlags,
+    turn_counter: u8,
+    switch_view: Option<voluntary_switch::VoluntarySwitch<'_>>,
+    rng: &mut impl BattleRng,
+) -> Result<EnemyAction, BattleError> {
+    ensure_supported_flags(ai_flags)?;
+    if let Some(slot) =
+        voluntary_switch::try_voluntary_switch(dex, enemy, player, switch_view, rng)?
+    {
+        return Ok(EnemyAction::Switch(slot));
+    }
+    score_trainer_action(dex, enemy, player, ai_flags, turn_counter, rng)
+}
+
+fn score_trainer_action(
     dex: &Dex,
     enemy: &BattlePokemon,
     player: &BattlePokemon,
@@ -2068,3 +2111,5 @@ mod tests {
 mod prologue_tests;
 #[cfg(test)]
 mod stat_stage_tests;
+mod voluntary_switch;
+pub(crate) use voluntary_switch::VoluntarySwitch;

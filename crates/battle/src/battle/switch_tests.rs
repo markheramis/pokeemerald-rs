@@ -1,5 +1,7 @@
 //! Trainer switch resolution and per-battler history, driven through the
-//! private action seam because no AI decision selects a switch yet.
+//! private action seam. Voluntary switches chosen by the trainer AI are
+//! covered in `trainer_ai::voluntary_switch`; these tests name the slot
+//! directly.
 
 use assets::trainers::TrainerId;
 use assets::{MoveId, SpeciesId};

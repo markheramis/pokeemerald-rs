@@ -4,6 +4,10 @@ Concise patch notes for development versions, carried from `dev` through the rel
 
 [`RELEASE.md` §Changelog](RELEASE.md#changelog) owns the update policy and entry format. Versions follow the repository's `FINAL.MAJOR.MINOR.PATCH` scheme.
 
+## [0.0.79.0] - 2026-10-28
+
+- Trainers with a benched Pokémon can switch before attacking when Perish Song is about to knock theirs out, Wonder Guard walls them, or the bench resists or absorbs the last hit.
+
 ## [0.0.78.0] - 2026-10-27
 
 - The Bag now shows a TM or HM's move type, power, accuracy and PP while its menu is open.

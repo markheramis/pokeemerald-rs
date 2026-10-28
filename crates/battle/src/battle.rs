@@ -48,7 +48,7 @@ use opponent_ai::{
     selectable_slot, EnemyAction,
 };
 use trainer::TrainerContext;
-use trainer_ai::choose_trainer_action;
+use trainer_ai::{choose_trainer_action_in_battle, VoluntarySwitch};
 
 const NO_MOVE_PRIORITY: i8 = 0;
 
@@ -838,12 +838,16 @@ impl Battle {
                 &self.player,
                 rng,
             )),
-            BattleKind::Trainer(context) => choose_trainer_action(
+            BattleKind::Trainer(context) => choose_trainer_action_in_battle(
                 &self.dex,
                 &self.enemy,
                 &self.player,
                 context.ai_flags(),
                 self.turn_counter,
+                Some(VoluntarySwitch::new(
+                    context,
+                    self.battler_state(BattlerSide::Enemy),
+                )),
                 rng,
             ),
             BattleKind::Wild => Ok(match choose_enemy_move(&self.enemy, rng) {

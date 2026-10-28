@@ -121,6 +121,11 @@ pub enum BattleError {
     /// refuses the lead before consuming randomness.
     AmbiguousPlayerAbility(SpeciesId),
 
+    /// Natural Cure's else-if would read `gBattleMoves[MOVE_UNAVAILABLE]`.
+    /// That index is not in the move table, so the switch is refused after
+    /// the coin that reaches the read and before any lookup.
+    UndefinedNaturalCureMove,
+
     /// A turn was requested while a level-up move awaited a learn decision.
     /// The pending move ID is returned without changing battle state.
     MoveLearnPending(MoveId),
@@ -137,6 +142,10 @@ pub enum BattleError {
 }
 
 impl fmt::Display for BattleError {
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one arm per variant; splitting the match would hide exhaustiveness"
+    )]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::StatStageOutOfRange(offset) => {
@@ -219,6 +228,10 @@ impl fmt::Display for BattleError {
                 f,
                 "species `{}` has two abilities the trainer AI cannot tell apart",
                 species.0
+            ),
+            Self::UndefinedNaturalCureMove => write!(
+                f,
+                "natural cure would read MOVE_UNAVAILABLE, which the move table does not define"
             ),
             Self::MoveLearnPending(id) => write!(
                 f,

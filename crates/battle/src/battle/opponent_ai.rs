@@ -13,12 +13,8 @@ pub(crate) enum EnemyAction {
     Struggle,
     Flee,
     /// Switch to the healthy non-active trainer party member in this
-    /// original slot. Nothing selects it yet: the trainer AI's switch
-    /// decision is a later change.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no AI decision selects a switch yet")
-    )]
+    /// original slot. `choose_trainer_action_in_battle` selects it when a
+    /// voluntary-switch probe names a replacement.
     Switch(usize),
 }
 
