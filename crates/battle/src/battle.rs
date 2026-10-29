@@ -1311,7 +1311,12 @@ impl Battle {
     /// Runs one battler's turn-order slot, then closes the action as
     /// `HandleAction_ActionFinished` does: the acting battler's own
     /// last-landed move returns to none (`pokeemerald/src/battle_util.c:671`).
-    /// Its last hitter and the move it landed on its target remain.
+    /// Its last hitter, and the move it landed on a target that is still
+    /// standing, remain. A fainted battler keeps neither. `settle_faint`
+    /// clears that history before move-end writes the landed move back, so
+    /// the close repeats `FaintClearSetData`'s `gLastLandedMoves` and
+    /// `gLastHitBy` clears (`pokeemerald/src/battle_main.c:3288`-`:3289`).
+    /// A direct `run_action` still sees the move-end write.
     fn act(
         &mut self,
         player_is_attacker: bool,
@@ -1323,7 +1328,22 @@ impl Battle {
         let result = self.run_action(player_is_attacker, move_id, slot, rng, events);
         self.battler_states[BattlerSide::from_is_player(player_is_attacker).index()]
             .clear_last_landed_move();
+        self.clear_fainted_battler_histories();
         result
+    }
+
+    fn clear_fainted_battler_histories(&mut self) {
+        for is_player in [true, false] {
+            let fainted = if is_player {
+                self.player.is_fainted()
+            } else {
+                self.enemy.is_fainted()
+            };
+            if fainted {
+                self.battler_states[BattlerSide::from_is_player(is_player).index()]
+                    .clear_faint_history();
+            }
+        }
     }
 
     /// Runs one battler's turn-order slot: the confusion decrement, the

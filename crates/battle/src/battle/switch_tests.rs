@@ -641,6 +641,29 @@ fn a_knocked_out_target_keeps_no_hitter_but_records_the_landed_move() {
 }
 
 #[test]
+fn act_clears_a_knocked_out_targets_landed_move_and_hitter() {
+    let mut battle = history_battle(&[MoveId::TACKLE]);
+    battle.enemy.apply_damage(battle.enemy.stats().max_hp - 1);
+
+    battle
+        .act(
+            true,
+            MoveId::TACKLE,
+            Some(0),
+            &mut ScriptedRng::new(&[]),
+            &mut Vec::new(),
+        )
+        .expect("resolves");
+
+    assert!(battle.enemy().is_fainted());
+    assert_eq!(
+        enemy_state(&battle),
+        (LastLandedMove::None, None),
+        "a finished action leaves a fainted battler with no history"
+    );
+}
+
+#[test]
 fn perish_song_state_is_an_input_that_none_zero_and_a_count_all_distinguish() {
     let mut battle = history_battle(&[MoveId::TACKLE]);
     let enemy = BattlerSide::Enemy.index();

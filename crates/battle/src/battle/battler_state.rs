@@ -101,6 +101,13 @@ impl BattlerState {
         self.last_landed_move = LastLandedMove::None;
     }
 
+    /// `FaintClearSetData` clears `gLastLandedMoves` and `gLastHitBy`
+    /// (`battle_main.c:3288`-`:3289`). Perish Song is a separate reset.
+    pub(super) fn clear_faint_history(&mut self) {
+        self.last_landed_move = LastLandedMove::None;
+        self.last_hitter = None;
+    }
+
     /// Sets a Perish Song countdown. No move produces one yet, so only tests
     /// install it.
     #[cfg(test)]

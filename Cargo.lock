@@ -98,7 +98,7 @@ checksum = "175571dd1d178ced59193a6fc02dde1b972eb0bc56c892cde9beeceac5bf0f6b"
 
 [[package]]
 name = "assets"
-version = "0.0.81+gamepatch.2"
+version = "0.0.81+gamepatch.3"
 dependencies = [
  "pack-format",
 ]
@@ -111,7 +111,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "audio"
-version = "0.0.81+gamepatch.2"
+version = "0.0.81+gamepatch.3"
 dependencies = [
  "platform",
 ]
@@ -124,7 +124,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "battle"
-version = "0.0.81+gamepatch.2"
+version = "0.0.81+gamepatch.3"
 dependencies = [
  "assets",
 ]
@@ -465,7 +465,7 @@ checksum = "edf234dd1594d6dd434a8fb8cada51ddbbc593e40e4a01556a0b31c62da2775b"
 
 [[package]]
 name = "engine"
-version = "0.0.81+gamepatch.2"
+version = "0.0.81+gamepatch.3"
 dependencies = [
  "assets",
  "pack-format",
@@ -1268,7 +1268,7 @@ dependencies = [
 
 [[package]]
 name = "pack-format"
-version = "0.0.81+gamepatch.2"
+version = "0.0.81+gamepatch.3"
 
 [[package]]
 name = "percent-encoding"
@@ -1316,7 +1316,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "platform"
-version = "0.0.81+gamepatch.2"
+version = "0.0.81+gamepatch.3"
 dependencies = [
  "cpal",
  "softbuffer",
@@ -1325,7 +1325,7 @@ dependencies = [
 
 [[package]]
 name = "pokeemerald-rs"
-version = "0.0.81+gamepatch.2"
+version = "0.0.81+gamepatch.3"
 dependencies = [
  "assets",
  "audio",
@@ -1457,11 +1457,11 @@ dependencies = [
 
 [[package]]
 name = "rendering"
-version = "0.0.81+gamepatch.2"
+version = "0.0.81+gamepatch.3"
 
 [[package]]
 name = "rom-import"
-version = "0.0.81+gamepatch.2"
+version = "0.0.81+gamepatch.3"
 dependencies = [
  "assets",
  "pack-format",
@@ -2048,7 +2048,7 @@ dependencies = [
 
 [[package]]
 name = "win-fs"
-version = "0.0.81+gamepatch.2"
+version = "0.0.81+gamepatch.3"
 dependencies = [
  "windows-sys 0.61.2",
 ]
@@ -2389,7 +2389,7 @@ checksum = "b9cc00251562a284751c9973bace760d86c0276c471b4be569fe6b068ee97a56"
 
 [[package]]
 name = "xtask"
-version = "0.0.81+gamepatch.2"
+version = "0.0.81+gamepatch.3"
 dependencies = [
  "assets",
  "pack-format",
