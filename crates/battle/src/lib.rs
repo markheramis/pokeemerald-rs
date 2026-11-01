@@ -158,8 +158,9 @@
 //! the trainer AI estimate's and the forced-replacement selector's
 //! `attacker_burned` input (the confusion self-hit still passes `false`): a burned attacker's physical damage halves unless
 //! it has Guts (`pokeemerald/src/pokemon.c:3262`-`:3264`), and
-//! `Battle::residual_effects` deals the burn tick after poison's
-//! ([`status1::burn_residual_damage`]). A burned participant with Water Veil
+//! `Battle::residual_effects` deals the burn tick after bad poison's, which
+//! follows ordinary poison
+//! ([`status1::burn_residual_damage`], [`status1::bad_poison_tick`]). A burned participant with Water Veil
 //! is refused at admission, as a poisoned Immunity holder is, because the
 //! move-end cure is unmodelled. The paralysis pipeline still reads Limber and the accuracy
 //! abilities ([`paralyze`], `accuracy_check`) and admits a Shed Skin
@@ -228,9 +229,9 @@
 //! and the secondary Speed drop) —
 //! the effect of any held item (a mon carries one, and [`ensure_held_item_playable`]
 //! refuses every item that has an effect), every primary status but [`status1::Status1::Paralysed`],
-//! [`status1::Status1::Poisoned`], [`status1::Status1::Burned`], and
-//! [`status1::Status1::Asleep`] (freeze, toxic — see [`status1`]'s module
-//! docs; no modelled move inflicts sleep or burn yet, so they arrive only
+//! [`status1::Status1::Poisoned`], [`status1::Status1::BadlyPoisoned`], [`status1::Status1::Burned`], and
+//! [`status1::Status1::Asleep`] (freeze is still unmodelled — see [`status1`]'s module
+//! docs; no modelled move inflicts sleep, burn, or bad poison yet, so they arrive only
 //! through [`pokemon::BattlePokemon::set_status1`]), every
 //! `status2`/`gStatuses3` bit outside [`volatile::Volatiles`]'s four
 //! (Substitute chief among them — see [`volatile`]'s module docs), weather,

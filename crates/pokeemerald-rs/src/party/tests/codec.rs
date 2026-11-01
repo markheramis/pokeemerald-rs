@@ -534,11 +534,11 @@ fn a_disagreeing_ability_slot_survives_the_save_round_trip() {
 
 /// `STATUS1_*` (`pokeemerald/include/constants/battle.h:114-125`): the three
 /// sleep bits count turns left, poison is `0x08`, burn is `0x10`, paralysis
-/// is `0x40`.
+/// is `0x40`, and bad poison is `0x80` with the counter in bits 8–11.
 #[test]
 fn every_modelled_status_word_decodes_and_encodes_back_to_itself() {
     let dex = Dex::new();
-    for (word, expected) in [
+    let mut cases = vec![
         (0, battle::Status1::Healthy),
         (1, battle::Status1::Asleep { turns: 1 }),
         (2, battle::Status1::Asleep { turns: 2 }),
@@ -550,7 +550,14 @@ fn every_modelled_status_word_decodes_and_encodes_back_to_itself() {
         (8, battle::Status1::Poisoned),
         (16, battle::Status1::Burned),
         (64, battle::Status1::Paralysed),
-    ] {
+    ];
+    for counter in 0..=15 {
+        cases.push((
+            0x80 | (u32::from(counter) << 8),
+            battle::Status1::BadlyPoisoned { counter },
+        ));
+    }
+    for (word, expected) in cases {
         let mut record = to_save_pokemon(&dex, &treecko_fixture());
         record.status = word;
 
@@ -564,9 +571,9 @@ fn every_modelled_status_word_decodes_and_encodes_back_to_itself() {
     }
 }
 
-/// Freeze `0x20`, bad poison `0x80` and its counter bits
-/// (`0x0F00`), several conditions at once, a sleep count beside poison, and
-/// bits above `STATUS1_ANY` are not modelled
+/// Freeze `0x20`, a toxic counter without bad poison (`0x100`), several
+/// conditions at once, a sleep count beside poison, and bits above
+/// `STATUS1_ANY` are not modelled
 /// (`pokeemerald/include/constants/battle.h:117-125`): decoding fails closed
 /// and names the original word, never masking it to a neighbour.
 #[test]
@@ -574,9 +581,6 @@ fn an_unmodelled_status_word_fails_closed_with_the_original_word() {
     let dex = Dex::new();
     for word in [
         0x20,
-        0x80,
-        0x180,
-        0xF80,
         0x100,
         0x9,
         0x48,
@@ -584,6 +588,7 @@ fn an_unmodelled_status_word_fails_closed_with_the_original_word() {
         0x18,
         0x50,
         0x11,
+        0x1080,
         0x8000_0000,
         0x1_0000,
     ] {
@@ -602,6 +607,19 @@ fn an_unmodelled_status_word_fails_closed_with_the_original_word() {
         );
         assert_eq!(record.status, word, "the record's bytes are untouched");
     }
+}
+
+#[test]
+fn an_internal_toxic_counter_beyond_the_status_word_is_refused_rather_than_truncated() {
+    let mut lead = treecko_fixture();
+    lead.set_status1(battle::Status1::BadlyPoisoned { counter: 16 });
+
+    let outcome = std::panic::catch_unwind(|| to_save_pokemon(&Dex::new(), &lead));
+
+    assert!(
+        outcome.is_err(),
+        "counter 16 would otherwise spill into the bits above STATUS1_TOXIC_COUNTER"
+    );
 }
 
 #[test]

@@ -4,6 +4,10 @@ Concise patch notes for development versions, carried from `dev` through the rel
 
 [`RELEASE.md` §Changelog](RELEASE.md#changelog) owns the update policy and entry format. Versions follow the repository's `FINAL.MAJOR.MINOR.PATCH` scheme.
 
+## [0.0.85.0] - 2026-11-01
+
+- A Pokémon that was badly poisoned when you saved now fights as badly poisoned: the damage rises each turn, up to fifteen sixteenths of its max HP, and Shed Skin can cure it. Switching or leaving the battle keeps the counter you saved, not the one that climbed during the fight. Toxic from a move in battle is still being prepared.
+
 ## [0.0.84.0] - 2026-10-30
 
 - General improvements in preparation for the message shown when a Pokémon faints from poison in the field. The asset pack format changed, so the game asks you to import your ROM again once.

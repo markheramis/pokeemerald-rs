@@ -143,6 +143,64 @@ fn a_switch_preserves_the_outgoing_members_hp_pp_and_status() {
 }
 
 #[test]
+fn a_switch_reloads_the_party_toxic_counter_rather_than_the_live_one() {
+    let mut rng = ScriptedRng::new(&[]);
+    let mut battle = four_mon_battle(&mut rng);
+    battle
+        .enemy
+        .set_status1(Status1::BadlyPoisoned { counter: 4 });
+    battle.apply_bad_poison_residual(false, &mut Vec::new());
+    assert_eq!(
+        battle.enemy().status1(),
+        Status1::BadlyPoisoned { counter: 5 },
+        "the residual advances the live counter"
+    );
+
+    // A full turn would tick the re-entered member again. The switch itself
+    // reloads the party word and must not keep the live counter.
+    battle
+        .switch_enemy_to(1, &mut Vec::new())
+        .expect("a healthy slot");
+    battle
+        .switch_enemy_to(0, &mut Vec::new())
+        .expect("back to the lead");
+
+    assert_eq!(
+        battle.enemy().status1(),
+        Status1::BadlyPoisoned { counter: 4 },
+        "re-entry copies the party word, whose counter the residual never wrote"
+    );
+}
+
+#[test]
+fn a_toxic_player_reserve_enters_with_its_party_counter() {
+    let dex = Dex::new();
+    let player = mon(&dex, MEOWTH, 5, &[MoveId::TACKLE]);
+    let mut reserve = mon(&dex, PICHU, 5, &[MoveId::TACKLE]);
+    reserve.set_status1(Status1::BadlyPoisoned { counter: 6 });
+    reserve.set_toxic_counter(9);
+    let party = vec![mon(&dex, TREECKO, 50, &[MoveId::TACKLE])];
+    let mut rng = ScriptedRng::new(&[]);
+    let mut battle = Battle::new_trainer_with_player_reserves(
+        dex,
+        player,
+        vec![reserve],
+        MAY_ROUTE_103_MUDKIP,
+        party,
+        &mut rng,
+    )
+    .expect("a valid battle");
+    battle.player.apply_damage(battle.player.stats().max_hp);
+
+    assert!(battle.send_out_next_player_reserve(&mut Vec::new()));
+    assert_eq!(
+        battle.player().status1(),
+        Status1::BadlyPoisoned { counter: 6 },
+        "send-out reloads the party counter, not the battle-local one"
+    );
+}
+
+#[test]
 fn a_switch_naming_anything_but_a_healthy_non_active_slot_changes_nothing() {
     let dex = Dex::new();
     let player = mon(&dex, MEOWTH, 5, &[MoveId::TACKLE]);

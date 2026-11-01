@@ -1,5 +1,5 @@
-//! Primary status ([`Status1`]), the full-paralysis gate, poison's and burn's
-//! end-turn damage, and Shed Skin's end-turn cure draw.
+//! Primary status ([`Status1`]), the full-paralysis gate, poison's, bad
+//! poison's and burn's end-turn damage, and Shed Skin's end-turn cure draw.
 //!
 //! `status1` persists across a switch, unlike the volatile bits in
 //! [`crate::volatile::Volatiles`]. Confusion belongs to those volatile bits
@@ -37,6 +37,15 @@ pub enum Status1 {
     /// the attacker's physical damage is halved unless it has Guts
     /// ([`crate::ability::burn_halves_damage`]).
     Burned,
+    /// Badly poisoned: [`bad_poison_tick`] fires every end of turn
+    /// (`ENDTURN_BAD_POISON`, `pokeemerald/src/battle_util.c:1536`-`:1546`).
+    /// `counter` is `STATUS1_TOXIC_COUNTER` (bits 8–11, `0..=15`). The
+    /// residual advances it on the battler only; the party word is unchanged
+    /// until a whole-status emit, and a switch reloads that word.
+    BadlyPoisoned {
+        /// Toxic turns already stacked, before this residual's increment.
+        counter: u8,
+    },
     /// Asleep with `turns` actions left before waking: the canceller
     /// ([`tick_sleep`]) decrements it ahead of every chosen move
     /// (`CANCELER_ASLEEP`, `pokeemerald/src/battle_util.c:2015`-`:2057`).
@@ -67,6 +76,28 @@ impl Status1 {
     #[must_use]
     pub const fn is_burned(self) -> bool {
         matches!(self, Self::Burned)
+    }
+
+    /// Whether this status is [`Status1::BadlyPoisoned`].
+    #[must_use]
+    pub const fn is_badly_poisoned(self) -> bool {
+        matches!(self, Self::BadlyPoisoned { .. })
+    }
+
+    /// The toxic counter when this is [`Status1::BadlyPoisoned`].
+    #[must_use]
+    pub const fn toxic_counter(self) -> Option<u8> {
+        match self {
+            Self::BadlyPoisoned { counter } => Some(counter),
+            _ => None,
+        }
+    }
+
+    /// Ordinary or bad poison: `STATUS1_PSN_ANY`
+    /// (`pokeemerald/include/constants/battle.h:124`).
+    #[must_use]
+    pub const fn is_psn_any(self) -> bool {
+        self.is_poisoned() || self.is_badly_poisoned()
     }
 
     /// Whether this status is [`Status1::Asleep`] with at least one turn left;
@@ -203,6 +234,28 @@ pub const fn poison_residual_damage(max_hp: u32) -> u32 {
     }
 }
 
+/// Largest `STATUS1_TOXIC_COUNTER` (`STATUS1_TOXIC_TURN(15)`).
+pub const TOXIC_COUNTER_MAX: u8 = 15;
+
+/// `ENDTURN_BAD_POISON`'s base is max HP / 16, never less than one. The
+/// counter increments first unless it is already [`TOXIC_COUNTER_MAX`], then
+/// the base is multiplied by that counter. No RNG draw
+/// (`pokeemerald/src/battle_util.c:1536`-`:1546`).
+#[must_use]
+pub const fn bad_poison_tick(counter: u8, max_hp: u32) -> (u32, u8) {
+    let next = if counter >= TOXIC_COUNTER_MAX {
+        TOXIC_COUNTER_MAX
+    } else {
+        counter + 1
+    };
+    let base = max_hp / BAD_POISON_DAMAGE_DENOMINATOR;
+    let base = if base == 0 { 1 } else { base };
+    (base * next as u32, next)
+}
+
+/// `ENDTURN_BAD_POISON` divides max HP by 16 (`pokeemerald/src/battle_util.c:1538`).
+const BAD_POISON_DAMAGE_DENOMINATOR: u32 = 16;
+
 /// `ENDTURN_BURN` deals max HP / 8 (`pokeemerald/src/battle_util.c:1553`).
 const BURN_DAMAGE_DENOMINATOR: u32 = 8;
 
@@ -241,8 +294,9 @@ pub fn draws_shed_skin_cure(status1: Status1, rng: &mut impl BattleRng) -> bool 
 #[cfg(test)]
 mod tests {
     use super::{
-        burn_residual_damage, draw_sleep_duration, draws_full_paralysis, draws_shed_skin_cure,
-        poison_residual_damage, tick_sleep, try_inflict_sleep, SleepTick, Status1,
+        bad_poison_tick, burn_residual_damage, draw_sleep_duration, draws_full_paralysis,
+        draws_shed_skin_cure, poison_residual_damage, tick_sleep, try_inflict_sleep, SleepTick,
+        Status1, TOXIC_COUNTER_MAX,
     };
     use crate::damage::BattleRng;
     use assets::AbilityId;
@@ -297,17 +351,50 @@ mod tests {
 
     #[test]
     fn each_variant_answers_exactly_its_own_predicates() {
-        for (status, healthy, paralysed, poisoned, burned) in [
-            (Status1::Healthy, true, false, false, false),
-            (Status1::Paralysed, false, true, false, false),
-            (Status1::Poisoned, false, false, true, false),
-            (Status1::Burned, false, false, false, true),
-            (Status1::Asleep { turns: 3 }, false, false, false, false),
+        for (status, healthy, paralysed, poisoned, burned, badly) in [
+            (Status1::Healthy, true, false, false, false, false),
+            (Status1::Paralysed, false, true, false, false, false),
+            (Status1::Poisoned, false, false, true, false, false),
+            (Status1::Burned, false, false, false, true, false),
+            (
+                Status1::Asleep { turns: 3 },
+                false,
+                false,
+                false,
+                false,
+                false,
+            ),
+            (
+                Status1::BadlyPoisoned { counter: 0 },
+                false,
+                false,
+                false,
+                false,
+                true,
+            ),
+            (
+                Status1::BadlyPoisoned { counter: 4 },
+                false,
+                false,
+                false,
+                false,
+                true,
+            ),
         ] {
             assert_eq!(status.is_healthy(), healthy, "{status:?}");
             assert_eq!(status.is_paralysed(), paralysed, "{status:?}");
             assert_eq!(status.is_poisoned(), poisoned, "{status:?}");
             assert_eq!(status.is_burned(), burned, "{status:?}");
+            assert_eq!(status.is_badly_poisoned(), badly, "{status:?}");
+            assert_eq!(status.is_psn_any(), poisoned || badly, "{status:?}");
+            assert_eq!(
+                status.toxic_counter(),
+                match status {
+                    Status1::BadlyPoisoned { counter } => Some(counter),
+                    _ => None,
+                },
+                "{status:?}"
+            );
             assert_eq!(
                 status.is_asleep(),
                 matches!(status, Status1::Asleep { .. }),
@@ -376,6 +463,7 @@ mod tests {
             Status1::Paralysed,
             Status1::Poisoned,
             Status1::Burned,
+            Status1::BadlyPoisoned { counter: 2 },
         ] {
             assert_eq!(
                 tick_sleep(status, AbilityId::EARLY_BIRD),
@@ -400,6 +488,7 @@ mod tests {
             (Status1::Paralysed, AbilityId::NONE),
             (Status1::Poisoned, AbilityId::NONE),
             (Status1::Burned, AbilityId::NONE),
+            (Status1::BadlyPoisoned { counter: 1 }, AbilityId::NONE),
             (Status1::Asleep { turns: 2 }, AbilityId::NONE),
             (Status1::Healthy, AbilityId::VITAL_SPIRIT),
             (Status1::Healthy, AbilityId::INSOMNIA),
@@ -436,7 +525,12 @@ mod tests {
 
     #[test]
     fn one_in_three_values_cure_a_statused_shed_skin_holder() {
-        for status in [Status1::Paralysed, Status1::Poisoned, Status1::Burned] {
+        for status in [
+            Status1::Paralysed,
+            Status1::Poisoned,
+            Status1::Burned,
+            Status1::BadlyPoisoned { counter: 7 },
+        ] {
             assert!(draws_shed_skin_cure(status, &mut FixedRng(0)), "{status:?}");
             assert!(draws_shed_skin_cure(status, &mut FixedRng(3)), "{status:?}");
             assert!(
@@ -448,6 +542,21 @@ mod tests {
                 "{status:?}"
             );
         }
+    }
+
+    #[test]
+    fn bad_poison_ticks_the_counter_before_multiplying_and_caps_at_fifteen() {
+        assert_eq!(bad_poison_tick(0, 160), (10, 1));
+        assert_eq!(bad_poison_tick(1, 160), (20, 2));
+        assert_eq!(bad_poison_tick(14, 160), (150, 15));
+        assert_eq!(
+            bad_poison_tick(15, 160),
+            (150, 15),
+            "fifteen does not become sixteen"
+        );
+        assert_eq!(bad_poison_tick(0, 15), (1, 1), "a zero base becomes one");
+        assert_eq!(bad_poison_tick(4, 15), (5, 5));
+        assert_eq!(TOXIC_COUNTER_MAX, 15);
     }
 
     #[test]

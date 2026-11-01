@@ -152,7 +152,7 @@ impl OverworldPhase {
             .map(crate::party::LoadedLead::slot);
         let lead_poisoned = lead_slot.is_some_and(|slot| {
             self.lead_battler()
-                .is_some_and(|lead| lead.status1().is_poisoned())
+                .is_some_and(|lead| lead.status1().is_psn_any())
                 || self.save1.player_party[slot].status & STATUS1_PSN_ANY != 0
         });
         if lead_poisoned {

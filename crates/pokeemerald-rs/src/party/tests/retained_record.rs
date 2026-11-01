@@ -146,6 +146,8 @@ fn a_merge_files_the_battlers_primary_status_over_the_backing_records_word() {
         (battle::Status1::Poisoned, STATUS1_POISON),
         (battle::Status1::Burned, STATUS1_BURN),
         (battle::Status1::Paralysed, STATUS1_PARALYSIS),
+        (battle::Status1::BadlyPoisoned { counter: 0 }, 0x80),
+        (battle::Status1::BadlyPoisoned { counter: 5 }, 0x580),
         (battle::Status1::Asleep { turns: 3 }, 3),
         (battle::Status1::Asleep { turns: 0 }, STATUS1_NONE),
         (battle::Status1::Healthy, STATUS1_NONE),

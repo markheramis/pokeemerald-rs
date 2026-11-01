@@ -369,6 +369,12 @@ pub struct BattlePokemon {
     stages: StatStages,
     volatiles: Volatiles,
     status1: Status1,
+    /// Party word for [`Self::status1`]. `ENDTURN_BAD_POISON` advances the
+    /// live toxic counter without a controller status emit, so a switch or
+    /// the post-battle return reloads this word rather than the battle-local
+    /// counter (`battle_script_commands.c` `REQUEST_ALL_BATTLE` reload;
+    /// `battle_util.c:1536`-`:1546` emits HP only).
+    persisted_status1: Status1,
     pending_move_learn: Option<PendingMoveLearn>,
 }
 
@@ -399,6 +405,7 @@ impl PartialEq for BattlePokemon {
             stages,
             volatiles,
             status1,
+            persisted_status1,
             pending_move_learn,
         } = self;
         *species == other.species
@@ -420,6 +427,7 @@ impl PartialEq for BattlePokemon {
             && *stages == other.stages
             && *volatiles == other.volatiles
             && *status1 == other.status1
+            && *persisted_status1 == other.persisted_status1
             && *pending_move_learn == other.pending_move_learn
     }
 }
@@ -533,6 +541,7 @@ impl BattlePokemon {
             stages: StatStages::default(),
             volatiles: Volatiles::default(),
             status1: Status1::default(),
+            persisted_status1: Status1::default(),
             pending_move_learn: None,
         })
     }
@@ -769,33 +778,44 @@ impl BattlePokemon {
         self.status1
     }
 
-    /// Overwrites the primary status. `Asleep { turns: 0 }` is stored as
-    /// [`Status1::Healthy`]: upstream's cleared sleep bits are a healthy battler.
+    /// Overwrites the primary status and the party word together. A cure,
+    /// a faint clear, Natural Cure, and sleep's controller emit all write
+    /// the whole word (`BtlController_EmitSetMonData` of `REQUEST_STATUS_BATTLE`).
+    /// `Asleep { turns: 0 }` is stored as [`Status1::Healthy`].
     pub const fn set_status1(&mut self, status1: Status1) {
-        self.status1 = status1.normalised();
+        let status1 = status1.normalised();
+        self.status1 = status1;
+        self.persisted_status1 = status1;
+    }
+
+    /// Advances the live toxic counter only. The party word stays put: the
+    /// residual emits HP, not status (`data/battle_scripts_1.s` poison turn
+    /// damage requests `REQUEST_HP_BATTLE`).
+    pub(crate) const fn set_toxic_counter(&mut self, counter: u8) {
+        if let Status1::BadlyPoisoned { .. } = self.status1 {
+            let counter = if counter > crate::status1::TOXIC_COUNTER_MAX {
+                crate::status1::TOXIC_COUNTER_MAX
+            } else {
+                counter
+            };
+            self.status1 = Status1::BadlyPoisoned { counter };
+        }
     }
 
     /// Resets stat stages and volatile conditions before returning this
-    /// battler to persistent party state.
+    /// battler to persistent party state, and reloads [`Self::status1`] from
+    /// the party word.
     ///
-    /// [`BattlePokemon::status1`] is deliberately left untouched here,
-    /// unlike stages and volatiles: `crates/pokeemerald-rs`'s
-    /// `finalize_battle_turn` calls this on the surviving lead mon after
-    /// *every* battle outcome, including an ordinary win, and upstream
-    /// paralysis or poison outlives a win precisely because nothing but a
-    /// faint, a heal, or a cure clears either — only
-    /// `Cmd_cleareffectsonfaint`'s `hp == 0`
-    /// branch zeroes `status1` (`battle_script_commands.c:3063`-`:3077`), a
-    /// narrower precondition than "this battler is leaving battle" that this
-    /// one shared method cannot express for both of its callers at once.
-    /// [`BattlePokemon::heal`] is the faithful cure path for a survivor; a
-    /// corpse's own `hp == 0` clear is its faint-settlement caller's own
-    /// explicit [`BattlePokemon::set_status1`] call, right alongside this
-    /// method (`crate::battle::execute::Battle::settle_faint`, the
-    /// double-faint arm of `crate::battle::execute::pipelines`).
+    /// Ordinary poison, burn, paralysis, and sleep are that word, so they
+    /// outlive a win. The toxic counter does not: `ENDTURN_BAD_POISON`
+    /// advances only the live copy, and both a switch-in and this post-battle
+    /// return reload the party word. A faint's `hp == 0` clear is still the
+    /// caller's own [`BattlePokemon::set_status1`], which updates the party
+    /// word, and [`BattlePokemon::heal`] is the cure path for a survivor.
     pub fn clear_battle_scratch(&mut self) {
         self.stages = StatStages::default();
         self.volatiles = Volatiles::default();
+        self.status1 = self.persisted_status1;
     }
 
     /// Applies earned experience one level threshold at a time, capping both

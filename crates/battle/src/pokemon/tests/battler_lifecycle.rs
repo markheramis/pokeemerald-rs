@@ -573,6 +573,21 @@ fn clear_battle_scratch_resets_stages_and_volatiles_but_not_status1() {
 }
 
 #[test]
+fn clear_battle_scratch_reloads_the_party_toxic_counter() {
+    let dex = Dex::new();
+    let mut mon = sample_mon(&dex);
+    mon.set_status1(Status1::BadlyPoisoned { counter: 4 });
+    mon.set_toxic_counter(9);
+    assert_eq!(mon.status1(), Status1::BadlyPoisoned { counter: 9 });
+    mon.clear_battle_scratch();
+    assert_eq!(
+        mon.status1(),
+        Status1::BadlyPoisoned { counter: 4 },
+        "the residual's counter is battle-local; leaving battle reloads the party word"
+    );
+}
+
+#[test]
 fn ivs_validate_zero_through_max_iv() {
     assert!(Ivs::default().is_valid());
     assert!(MAX_IVS.is_valid());

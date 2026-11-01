@@ -23,8 +23,8 @@ use crate::pokemon::{BattlePokemon, MoveLearnDecision, PendingMoveLearn, MAX_LEV
 use crate::secondary;
 use crate::stat_change;
 use crate::status1::{
-    burn_residual_damage, draws_full_paralysis, draws_shed_skin_cure, poison_residual_damage,
-    tick_sleep, SleepTick, Status1,
+    bad_poison_tick, burn_residual_damage, draws_full_paralysis, draws_shed_skin_cure,
+    poison_residual_damage, tick_sleep, SleepTick, Status1,
 };
 use crate::turn_order::{resolve_order, Order};
 use crate::volatile::draws_confusion_self_hit;
@@ -1005,7 +1005,8 @@ impl Battle {
         );
         // `DoBattlerEndTurnEffects` walks that rebuilt order and within each battler's pass reaches
         // ENDTURN_ABILITIES (Shed Skin) before ENDTURN_POISON, and
-        // ENDTURN_POISON before ENDTURN_BURN, and ENDTURN_BURN before
+        // ENDTURN_POISON before ENDTURN_BAD_POISON, and ENDTURN_BAD_POISON before
+        // ENDTURN_BURN, and ENDTURN_BURN before
         // ENDTURN_CHARGE (`src/battle_util.c:1442`-`:1474`, `:1494`-`:1560`).
         let player_first = matches!(order, Order::AttackerFirst);
         for is_player in [player_first, !player_first] {
@@ -1019,6 +1020,7 @@ impl Battle {
             }
             self.apply_shed_skin_residual(is_player, rng, events);
             self.apply_poison_residual(is_player, events);
+            self.apply_bad_poison_residual(is_player, events);
             self.apply_burn_residual(is_player, events);
             if is_player {
                 self.player.volatiles_mut().tick_charge();
@@ -1097,6 +1099,32 @@ impl Battle {
         let dealt = damage.min(target.current_hp());
         target.apply_damage(dealt);
         events.push(BattleEvent::HurtByPoison {
+            by_player: is_player,
+            damage: dealt,
+        });
+    }
+
+    /// `ENDTURN_BAD_POISON`: between ordinary poison and burn. The counter
+    /// increments before the multiply, capped at 15, with no RNG draw and no
+    /// status write-back (`pokeemerald/src/battle_util.c:1533`-`:1546`).
+    fn apply_bad_poison_residual(&mut self, is_player: bool, events: &mut Vec<BattleEvent>) {
+        let battler = if is_player { &self.player } else { &self.enemy };
+        if battler.is_fainted() {
+            return;
+        }
+        let Some(counter) = battler.status1().toxic_counter() else {
+            return;
+        };
+        let (damage, next) = bad_poison_tick(counter, battler.stats().max_hp);
+        let target = if is_player {
+            &mut self.player
+        } else {
+            &mut self.enemy
+        };
+        target.set_toxic_counter(next);
+        let dealt = damage.min(target.current_hp());
+        target.apply_damage(dealt);
+        events.push(BattleEvent::HurtByBadPoison {
             by_player: is_player,
             damage: dealt,
         });
