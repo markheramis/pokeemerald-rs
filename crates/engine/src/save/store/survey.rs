@@ -156,10 +156,19 @@ impl SlotSurvey {
 
     /// Folds the sector at physical position `i` into the survey.
     pub(super) fn observe(&mut self, i: usize, sector: &Sector) {
+        let in_tail = i >= usize::from(SECTOR_ID_PKMN_STORAGE_START);
+        // An unsigned tail sector was erased or never finished. Upstream's
+        // `GetSaveValidStatus` never treats it as a present id
+        // (`pokeemerald/src/save.c`), so it spends the same unusable-tail
+        // budget as a checksum failure. Returning before that bookkeeping
+        // let a sixth-sector tear, stopped after the erase, read as a stale
+        // legacy tail.
         if sector.signature() != SECTOR_SIGNATURE {
+            if in_tail {
+                self.note_unusable_tail(i);
+            }
             return;
         }
-        let in_tail = i >= usize::from(SECTOR_ID_PKMN_STORAGE_START);
         if in_tail {
             self.tail_signature_seen = true;
         }
@@ -167,9 +176,7 @@ impl SlotSurvey {
         let id = sector.id();
         let is_valid_sector = sector_payload_len(id).is_some_and(|len| sector.is_valid(len));
         if in_tail && !is_valid_sector {
-            self.tail_unusable_count += 1;
-            self.tail_unusable_at_first_tail_position =
-                i == usize::from(SECTOR_ID_PKMN_STORAGE_START);
+            self.note_unusable_tail(i);
         }
         if !is_valid_sector {
             return;
@@ -213,6 +220,16 @@ impl SlotSurvey {
                 Some(_) => self.legacy_consistent = false,
             }
         }
+    }
+
+    /// Counts a tail sector that cannot contribute an id.
+    ///
+    /// The first-tail flag records whether *this* position is the slot's
+    /// first tail sector. A later unusable sector replaces it, matching one
+    /// pass in physical order.
+    fn note_unusable_tail(&mut self, i: usize) {
+        self.tail_unusable_count += 1;
+        self.tail_unusable_at_first_tail_position = i == usize::from(SECTOR_ID_PKMN_STORAGE_START);
     }
 
     /// Counter of the one complete storage set here, unless an outlier is a

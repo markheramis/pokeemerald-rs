@@ -32290,7 +32290,7 @@
           "status": "rewritten"
         },
         "GetSaveValidStatus": {
-          "reason": "Per-slot signature and checksum scan over all 14 positions plus the OK/Empty/Corrupt/Error table and wraparound counter comparison, as SlotSurvey::observe and SlotSurvey::verdict per slot and survey::resolve across slots. Beyond upstream, a slot holding ids 0-4 under one counter (the former five-sector format) is intact and migrates to 14 sectors on the next save.",
+          "reason": "Per-slot signature and checksum scan over all 14 positions plus the OK/Empty/Corrupt/Error table and wraparound counter comparison, as SlotSurvey::observe and SlotSurvey::verdict per slot and survey::resolve across slots. Beyond upstream, a slot holding ids 0-4 under one counter (the former five-sector format) is intact and migrates to 14 sectors on the next save. An unsigned or erased sector in the tail (positions 5-13) counts as unusable at that position, so a sixth-sector write torn after its erase, with the missing id left blank rather than checksum-damaged, reads Error the same way a checksum failure there does.",
           "rust_target": "crates/engine/src/save/store/survey.rs",
           "spec": "S-5",
           "status": "rewritten"

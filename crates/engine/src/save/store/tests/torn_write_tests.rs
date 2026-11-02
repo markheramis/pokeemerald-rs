@@ -413,3 +413,14 @@ fn a_sixth_sector_torn_before_its_footer_still_reads_error() {
     store.corrupt_byte(1, 5, 0);
     assert_eq!(store.scan_slot(1).integrity, SlotIntegrity::Error);
 }
+
+/// A sixth sector torn after its erase leaves position 5 blank; the write
+/// is still torn after six sectors, id 13 is gone, and upstream reads Error.
+#[test]
+fn a_sixth_sector_torn_after_its_erase_still_reads_error() {
+    let mut store = SaveStore::new();
+    write_full_slot_rotated(&mut store, 1, 1, 12);
+    tear_rotation_zero_write(&mut store, 1, 5, 14);
+    store.write_physical(1, 5, &Sector::empty());
+    assert_eq!(store.scan_slot(1).integrity, SlotIntegrity::Error);
+}
