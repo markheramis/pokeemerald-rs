@@ -343,9 +343,11 @@ impl IntroScene {
         if self.printer.cleared_window() {
             self.ops.clear();
         }
-        // Polled right after `tick`: a positive `CLEAR`/`CLEAR_TO` always
-        // ends the frame as `TickEvent::Idle` (`Printer::cleared_span`), so
-        // this never competes with a same-tick glyph.
+        // Polled right after `tick`. A positive `CLEAR`/`CLEAR_TO` ends the
+        // frame as `TickEvent::Idle`. A `MIN_LETTER_SPACING` gap is the
+        // exception: it is cleared on the same tick as the glyph it follows,
+        // and the span starts at the glyph's far edge so the two do not
+        // overlap.
         if let Some(span) = self.printer.cleared_span() {
             self.ops.push(WindowOp::ClearSpan(span));
         }

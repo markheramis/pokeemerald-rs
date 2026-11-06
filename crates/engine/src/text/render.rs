@@ -9,13 +9,18 @@
 //! # Deliberately out of scope
 //!
 //! Formatting, audio, and window-buffer controls are consumed without applying
-//! effects. Placeholders, dynamic tokens, and keypad icons are skipped because
-//! this renderer has no expansion context or corresponding glyphs. `CLEAR`,
-//! `CLEAR_TO`, and `FILL_WINDOW` are the exceptions: they move the cursor, so
-//! `CLEAR`/`CLEAR_TO`'s geometry is reported as a [`ClearedSpan`] and
-//! `FILL_WINDOW`'s whole-window equivalent through
+//! effects, except the ones named here. `CLEAR`, `CLEAR_TO`, and `FILL_WINDOW`
+//! move the cursor: `CLEAR`/`CLEAR_TO`'s geometry is reported as a
+//! [`ClearedSpan`] and `FILL_WINDOW`'s whole-window equivalent through
 //! [`Printer::cleared_window`], both for the caller to erase. Which colour
 //! that erase uses stays out of scope with the rest of formatting.
+//! `MIN_LETTER_SPACING` widens a following glyph's advance and, when the
+//! glyph is narrower than that minimum, reports the leftover gap as a
+//! [`ClearedSpan`] on the same tick as the glyph. `FONT` selects another
+//! supplied glyph sheet ([`Printer::with_font_sheet`]) and refreshes the
+//! newline and clear-span metrics from that font. Placeholders, dynamic
+//! tokens, and keypad icons are skipped because this renderer has no
+//! expansion context or corresponding glyphs.
 
 use assets::fonts::{FontId, Glyph, GlyphSource};
 
@@ -29,11 +34,29 @@ mod ext_ctrl {
     pub const CLEAR: u8 = super::super::EXT_CTRL_CODE_CLEAR;
     pub const CLEAR_TO: u8 = super::super::EXT_CTRL_CODE_CLEAR_TO;
     pub const FILL_WINDOW: u8 = super::super::EXT_CTRL_CODE_FILL_WINDOW;
+    pub const FONT: u8 = super::super::EXT_CTRL_CODE_FONT;
+    pub const MIN_LETTER_SPACING: u8 = super::super::EXT_CTRL_CODE_MIN_LETTER_SPACING;
     pub const PAUSE: u8 = super::super::EXT_CTRL_CODE_PAUSE;
     pub const PAUSE_UNTIL_PRESS: u8 = super::super::EXT_CTRL_CODE_PAUSE_UNTIL_PRESS;
 }
 
 const EXTRA_SYMBOL_PAGE_START: u16 = 0x100;
+
+/// Upstream `FONT_*` ids this renderer can select (`include/text.h`).
+///
+/// `FONT_SHORT_COPY_1` through `_3` share [`FontId::Short`]'s sheet, matching
+/// upstream's width-table aliases. `FONT_BRAILLE` and `FONT_BOLD` have no
+/// sheet here, so they are not selectable.
+fn modelled_font(upstream_id: u8) -> Option<FontId> {
+    match upstream_id {
+        0 => Some(FontId::Small),
+        1 => Some(FontId::Normal),
+        2..=5 => Some(FontId::Short),
+        7 => Some(FontId::Narrow),
+        8 => Some(FontId::SmallNarrow),
+        _ => None,
+    }
+}
 
 /// Returns the vertical cursor advance for a newline in `font`.
 #[must_use]
@@ -293,13 +316,19 @@ fn glyph_id_for_token(tok: &Token) -> Option<u16> {
 pub struct Printer<S> {
     tokens: Vec<Token>,
     next_token_index: usize,
-    glyphs: S,
+    sheets: Vec<S>,
+    active_sheet: usize,
     speed: TextSpeed,
     reveal_delay_frames_remaining: u8,
     origin: PixelPos,
     cursor: PixelPos,
+    /// Template line spacing added to the active font's maximum letter height.
+    line_spacing: u8,
     line_height: i32,
     clear_height: i32,
+    /// `0` leaves the advance at the glyph's own width (`text.c` treats a
+    /// zero `minLetterSpacing` as unset).
+    min_letter_spacing: u8,
     cleared_span: Option<ClearedSpan>,
     cleared_window: bool,
     state: PrinterState,
@@ -313,14 +342,18 @@ impl<S: GlyphSource> Printer<S> {
     /// A/B speed-up is disabled until [`Self::with_ab_speed_up_print`] is used.
     #[must_use]
     pub fn new(tokens: Vec<Token>, glyphs: S, speed: TextSpeed, origin: PixelPos) -> Self {
+        let font = glyphs.font();
         Self {
             tokens,
             next_token_index: 0,
-            line_height: max_letter_height(glyphs.font()),
-            clear_height: clear_span_height(glyphs.font()),
+            line_spacing: 0,
+            line_height: max_letter_height(font),
+            clear_height: clear_span_height(font),
+            min_letter_spacing: 0,
             cleared_span: None,
             cleared_window: false,
-            glyphs,
+            sheets: vec![glyphs],
+            active_sheet: 0,
             speed,
             reveal_delay_frames_remaining: 0,
             origin,
@@ -331,14 +364,34 @@ impl<S: GlyphSource> Printer<S> {
         }
     }
 
+    /// Registers another glyph sheet a mid-string `FONT` control can select.
+    ///
+    /// The sheet passed to [`Self::new`] stays the initial font. A `FONT`
+    /// control whose upstream id maps to a registered sheet switches to it
+    /// and refreshes newline and clear-span metrics; an id with no sheet
+    /// (including braille and the Japanese bold face) leaves the current
+    /// sheet in place.
+    #[must_use]
+    pub fn with_font_sheet(mut self, sheet: S) -> Self {
+        self.sheets.push(sheet);
+        self
+    }
+
+    fn glyphs(&self) -> &S {
+        &self.sheets[self.active_sheet]
+    }
+
     /// Sets the template line spacing in pixels (`TextPrinterTemplate.lineSpacing`).
     ///
-    /// A newline advances the cursor by the font's maximum letter height plus
-    /// this spacing (`pokeemerald/src/text.c:970`), and a scroll prompt scrolls
-    /// the same distance (`text.c:1184`). Printers default to zero spacing.
+    /// A newline advances the cursor by the active font's maximum letter height
+    /// plus this spacing (`pokeemerald/src/text.c:970`), and a scroll prompt
+    /// scrolls the same distance (`text.c:1184`). A later `FONT` control keeps
+    /// this spacing and swaps only the font's own height. Printers default to
+    /// zero spacing.
     #[must_use]
     pub fn with_line_spacing(mut self, line_spacing: u8) -> Self {
-        self.line_height = max_letter_height(self.glyphs.font()) + i32::from(line_spacing);
+        self.line_spacing = line_spacing;
+        self.line_height = max_letter_height(self.glyphs().font()) + i32::from(line_spacing);
         self
     }
 
@@ -533,17 +586,47 @@ impl<S: GlyphSource> Printer<S> {
             let Some(glyph_id) = glyph_id else {
                 continue;
             };
-            let Some(glyph) = self.glyphs.glyph(glyph_id) else {
+            let Some(glyph) = self.glyphs().glyph(glyph_id) else {
                 continue;
             };
 
+            let advance_width = glyph.advance_width;
             let placement = RevealedGlyph {
                 x: self.cursor.0,
                 y: self.cursor.1,
                 glyph,
             };
-            self.cursor.0 = self.cursor.0.saturating_add(i32::from(glyph.advance_width));
+            self.advance_past_glyph(advance_width);
             return TickEvent::Glyph(Box::new(placement));
+        }
+    }
+
+    /// Moves the cursor past a glyph, widening the step to `minLetterSpacing`
+    /// and recording the leftover gap when that minimum is larger
+    /// (`pokeemerald/src/text.c:1149-1165`).
+    ///
+    /// The gap is cleared after the glyph's own advance, so it never covers
+    /// the glyph. A minimum of zero, or one the glyph already meets, adds
+    /// nothing beyond the glyph's advance width.
+    fn advance_past_glyph(&mut self, advance_width: u8) {
+        let advance = i32::from(advance_width);
+        self.cursor.0 = self.cursor.0.saturating_add(advance);
+        if self.min_letter_spacing == 0 {
+            return;
+        }
+        let gap = i32::from(self.min_letter_spacing) - advance;
+        if gap <= 0 {
+            return;
+        }
+        let representable = gap.min(i32::MAX.saturating_sub(self.cursor.0));
+        if representable > 0 {
+            self.cleared_span = Some(ClearedSpan {
+                x: self.cursor.0,
+                y: self.cursor.1,
+                width: representable,
+                height: self.clear_height,
+            });
+            self.cursor.0 = self.cursor.0.saturating_add(representable);
         }
     }
 
@@ -602,6 +685,30 @@ impl<S: GlyphSource> Printer<S> {
             ext_ctrl::FILL_WINDOW => {
                 self.cursor = self.origin;
                 return ControlOutcome::ClearedWindow;
+            }
+            // `text.c:1007-1010`: the argument is an upstream `FONT_*` id.
+            // Switching requires a sheet registered with [`Self::with_font_sheet`];
+            // braille, the Japanese bold face, and any unregistered id stay on
+            // the current sheet so the metrics cannot drift from the glyphs.
+            ext_ctrl::FONT => {
+                let Some(&id) = arguments.first() else {
+                    return ControlOutcome::Repeat;
+                };
+                let Some(font) = modelled_font(id) else {
+                    return ControlOutcome::Repeat;
+                };
+                let Some(index) = self.sheets.iter().position(|sheet| sheet.font() == font) else {
+                    return ControlOutcome::Repeat;
+                };
+                self.active_sheet = index;
+                self.clear_height = clear_span_height(font);
+                self.line_height = max_letter_height(font) + i32::from(self.line_spacing);
+            }
+            // `text.c:1091-1092`: stored and applied after each later glyph.
+            ext_ctrl::MIN_LETTER_SPACING => {
+                if let Some(&spacing) = arguments.first() {
+                    self.min_letter_spacing = spacing;
+                }
             }
             _ => {}
         }
@@ -1138,6 +1245,119 @@ mod tests {
             panic!("expected a glyph")
         };
         assert_eq!((g.x, g.y), (20, 1));
+    }
+
+    #[test]
+    fn min_letter_spacing_widens_the_advance_and_clears_the_gap() {
+        let pixels = blank_sheet_pixels();
+        let sheet = synthetic_sheet(&pixels, FontId::Normal);
+        let tokens = decode_tokens(&[
+            super::super::EXT_CTRL_CODE_BEGIN,
+            ext_ctrl::MIN_LETTER_SPACING,
+            12,
+            ENCODED_A,
+            ENCODED_A,
+            super::super::EOS,
+        ]);
+        let mut printer = Printer::new(tokens, sheet, TextSpeed::Instant, (0, 1));
+
+        let TickEvent::Glyph(first) = printer.tick(PrinterInput::none()) else {
+            panic!("expected a glyph")
+        };
+        assert_eq!((first.x, first.y), (0, 1));
+        assert_eq!(
+            printer.cleared_span(),
+            Some(ClearedSpan {
+                x: i32::from(NORMAL_A_ADVANCE_WIDTH),
+                y: 1,
+                width: 12 - i32::from(NORMAL_A_ADVANCE_WIDTH),
+                height: 15,
+            })
+        );
+        assert_eq!(printer.cursor(), (12, 1));
+
+        let TickEvent::Glyph(second) = printer.tick(PrinterInput::none()) else {
+            panic!("expected a second glyph")
+        };
+        assert_eq!((second.x, second.y), (12, 1));
+        assert_eq!(printer.cursor(), (24, 1));
+    }
+
+    #[test]
+    fn min_letter_spacing_does_not_clear_when_the_glyph_is_already_wider() {
+        let pixels = blank_sheet_pixels();
+        let sheet = synthetic_sheet(&pixels, FontId::Normal);
+        let tokens = decode_tokens(&[
+            super::super::EXT_CTRL_CODE_BEGIN,
+            ext_ctrl::MIN_LETTER_SPACING,
+            1,
+            ENCODED_A,
+            super::super::EOS,
+        ]);
+        let mut printer = Printer::new(tokens, sheet, TextSpeed::Instant, (0, 1));
+
+        let TickEvent::Glyph(glyph) = printer.tick(PrinterInput::none()) else {
+            panic!("expected a glyph")
+        };
+        assert_eq!((glyph.x, glyph.y), (0, 1));
+        assert_eq!(printer.cleared_span(), None);
+        assert_eq!(printer.cursor(), (i32::from(NORMAL_A_ADVANCE_WIDTH), 1));
+    }
+
+    #[test]
+    fn font_control_switches_the_supplied_glyph_source_and_line_metrics() {
+        let pixels = blank_sheet_pixels();
+        let normal = synthetic_sheet(&pixels, FontId::Normal);
+        let small = synthetic_sheet(&pixels, FontId::Small);
+        let small_advance = FontId::Small
+            .glyph_width(u16::from(ENCODED_A))
+            .expect("small 'A' has a width");
+        assert_ne!(small_advance, NORMAL_A_ADVANCE_WIDTH);
+        let tokens = decode_tokens(&[
+            super::super::EXT_CTRL_CODE_BEGIN,
+            ext_ctrl::FONT,
+            0, // FONT_SMALL
+            ENCODED_A,
+            super::super::CHAR_NEWLINE,
+            ENCODED_A,
+            super::super::EOS,
+        ]);
+        let mut printer =
+            Printer::new(tokens, normal, TextSpeed::Instant, (0, 1)).with_font_sheet(small);
+
+        let TickEvent::Glyph(first) = printer.tick(PrinterInput::none()) else {
+            panic!("expected a glyph from the small font")
+        };
+        assert_eq!((first.x, first.y), (0, 1));
+        assert_eq!(first.glyph.advance_width, small_advance);
+
+        let TickEvent::Glyph(second) = printer.tick(PrinterInput::none()) else {
+            panic!("expected the glyph after the newline")
+        };
+        assert_eq!(
+            (second.x, second.y),
+            (0, 1 + max_letter_height(FontId::Small))
+        );
+        assert_eq!(second.glyph.advance_width, small_advance);
+    }
+
+    #[test]
+    fn font_control_without_a_sheet_keeps_the_current_glyphs() {
+        let pixels = blank_sheet_pixels();
+        let sheet = synthetic_sheet(&pixels, FontId::Normal);
+        let tokens = decode_tokens(&[
+            super::super::EXT_CTRL_CODE_BEGIN,
+            ext_ctrl::FONT,
+            0, // FONT_SMALL, no sheet registered
+            ENCODED_A,
+            super::super::EOS,
+        ]);
+        let mut printer = Printer::new(tokens, sheet, TextSpeed::Instant, (0, 1));
+
+        let TickEvent::Glyph(glyph) = printer.tick(PrinterInput::none()) else {
+            panic!("expected a glyph")
+        };
+        assert_eq!(glyph.glyph.advance_width, NORMAL_A_ADVANCE_WIDTH);
     }
 
     #[test]
