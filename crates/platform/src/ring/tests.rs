@@ -578,3 +578,75 @@ fn a_stop_between_the_discard_snapshot_and_claim_drops_all_history_before_its_ma
     assert_eq!(consumer.available(), 0);
     assert_eq!(consumer.underruns(), 0, "the discard is not an underrun");
 }
+
+thread_local! {
+    /// Run after a push publishes its samples and before it counts them, as
+    /// a `stop` landing in that window would.
+    static BETWEEN_PUSH_PUBLISH_AND_COUNT: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        std::cell::RefCell::new(None);
+}
+
+pub(super) fn between_push_publish_and_count() {
+    if let Some(hook) = BETWEEN_PUSH_PUBLISH_AND_COUNT.with(|h| h.borrow_mut().take()) {
+        hook();
+    }
+}
+
+/// A `stop` that marks the queue after the samples are published and before
+/// they are counted must drop only what that mark covers. The in-flight push
+/// is after the mark, so it plays with whatever is queued once the stop
+/// returns.
+#[test]
+fn a_stop_between_publish_and_count_discards_only_samples_before_its_mark() {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Arc, Barrier};
+
+    let (producer, mut consumer) = ring_buffer(8);
+    assert_eq!(producer.push(&[0.25; 2]), 2);
+    consumer.discard_queued_at_first_read();
+
+    let go = Arc::new(Barrier::new(2));
+    let settled = Arc::new(Barrier::new(2));
+    let (go_consumer, settled_consumer) = (Arc::clone(&go), Arc::clone(&settled));
+    let consumer_thread = std::thread::spawn(move || {
+        go_consumer.wait();
+        // Settle the discard before the in-flight push is counted, while
+        // its samples are already visible.
+        consumer.fill(&mut []);
+        settled_consumer.wait();
+        consumer
+    });
+
+    let seen = Arc::new(AtomicU64::new(u64::MAX));
+    let (racer, seen_hook, go_hook, settled_hook) = (
+        producer.clone(),
+        Arc::clone(&seen),
+        Arc::clone(&go),
+        Arc::clone(&settled),
+    );
+    BETWEEN_PUSH_PUBLISH_AND_COUNT.with(|h| {
+        *h.borrow_mut() = Some(Box::new(move || {
+            let mark = racer.pushed();
+            seen_hook.store(mark, Ordering::Release);
+            racer.keep_pushed_from_at_first_read(mark);
+            go_hook.wait();
+            settled_hook.wait();
+        }));
+    });
+
+    assert_eq!(producer.push(&[0.25; 2]), 2);
+    assert_eq!(producer.push(&[0.5; 2]), 2);
+    let mut consumer = consumer_thread.join().expect("consumer thread");
+    let mark = seen.load(Ordering::Acquire);
+    let all = [0.25, 0.25, 0.25, 0.25, 0.5, 0.5];
+    let expect = &all[usize::try_from(mark).expect("mark")..];
+    let mut out = [0.0; 4];
+    consumer.fill(&mut out);
+    assert_eq!(
+        &out[..expect.len()],
+        expect,
+        "every sample before mark {mark} is dropped, and what follows plays"
+    );
+    assert_eq!(consumer.available(), 0);
+    assert_eq!(consumer.underruns(), 0, "the discard is not an underrun");
+}

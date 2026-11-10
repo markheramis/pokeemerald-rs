@@ -52,9 +52,10 @@ struct Shared {
     /// and consumer sides share. Always in `[0, capacity]`.
     occupied: AtomicUsize,
     underruns: AtomicU64,
-    /// Samples ever accepted by [`Producer::push`], wrapping. Written only
-    /// while `head` is held, so it and the write index advance together;
-    /// [`Producer::pushed`] reads it without the lock.
+    /// Samples ever published by [`Producer::push`], wrapping. Written only
+    /// while `head` is held, and only after `occupied` has published those
+    /// samples, so [`Producer::pushed`] never marks a push the consumer
+    /// cannot see yet. [`Producer::pushed`] reads it without the lock.
     pushed: AtomicU64,
     /// Samples ever taken off the queue, read or discarded, wrapping.
     /// Written only by the consumer side, so with `pushed` it fixes the
@@ -152,33 +153,37 @@ impl Producer {
         }
         if n > 0 {
             *head = (*head + n) % self.shared.capacity;
-            // Counted before `occupied` publishes the samples, so a consumer
-            // that sees them queued also sees them counted. Otherwise
-            // relaxed: only ever written while `head` is held, and a reader
-            // without it needs only some value this counter has held.
+            // Release: publishes the slot stores above to the consumer's
+            // `Acquire` load of `occupied`. The push count follows this
+            // publish, so a `stop` that reads [`Self::pushed`] in between
+            // cannot mark samples the consumer cannot see — those samples
+            // are after the mark and still play. Counting first let that
+            // stop cover a push the discard had not yet observed, and the
+            // next fill played it.
+            self.shared.occupied.fetch_add(n, Ordering::Release);
+            #[cfg(test)]
+            tests::between_push_publish_and_count();
             let pushed = self.shared.pushed.load(Ordering::Relaxed);
             self.shared.pushed.store(
                 pushed.wrapping_add(u64::try_from(n).unwrap_or(u64::MAX)),
-                Ordering::Relaxed,
+                Ordering::Release,
             );
-            // Release: publishes the slot stores and the count above to the
-            // consumer's `Acquire` load of `occupied`.
-            self.shared.occupied.fetch_add(n, Ordering::Release);
         }
         n
     }
 
-    /// Samples ever accepted by [`Self::push`], wrapping on overflow.
+    /// Samples ever published to the consumer, wrapping on overflow.
     ///
     /// A mark taken here splits the queue: [`HeldQueue::discard_pushed_before`]
     /// keeps only what was pushed after it. Used by the audio transport to
     /// record where a `stop` landed.
     ///
     /// Never takes the producer lock, so a `stop` cannot wait behind another
-    /// producer's push. A push still in progress may or may not be counted;
-    /// either way the mark falls between whole pushes.
+    /// producer's push. The count advances only after `occupied` publishes
+    /// the samples, so the mark never covers a push the consumer cannot see.
+    /// A push still between those two steps falls after the mark.
     pub(crate) fn pushed(&self) -> u64 {
-        self.shared.pushed.load(Ordering::Relaxed)
+        self.shared.pushed.load(Ordering::Acquire)
     }
 
     /// Narrow a pending [`Consumer::discard_queued_at_first_read`] to the
