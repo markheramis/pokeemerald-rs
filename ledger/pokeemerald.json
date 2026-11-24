@@ -35158,8 +35158,14 @@
           "status": "ported"
         },
         "sReelSymbols": {
-          "reason": "src/slot_machine.c:5225-5296 sReelSymbols, transcribed as the three 21-symbol strips (left, middle, right) of the seven SYMBOL_* values (src/slot_machine.c:76-84), behind reel_strip/symbol_at, which refuse an out-of-range position, and Reel::new/ReelSymbol::new, which refuse an unknown reel or symbol. Pinned symbol by symbol (63 values) by unit tests and an ignored test that re-parses src/slot_machine.c. Data only: sReelTimeSymbols, the odds, stop logic, payouts, graphics and coin changes are NOT modelled.",
+          "reason": "src/slot_machine.c:5225-5296 sReelSymbols, transcribed as the three 21-symbol strips (left, middle, right) of the seven SYMBOL_* values (src/slot_machine.c:76-84), behind reel_strip/symbol_at, which refuse an out-of-range position, and Reel::new/ReelSymbol::new, which refuse an unknown reel or symbol. Pinned symbol by symbol (63 values) by unit tests and an ignored test that re-parses src/slot_machine.c. Data only: the odds, stop logic, payouts, graphics and coin changes are NOT modelled. The Reel Time number strip is the separate sub-artifact sReelTimeSymbols.",
           "rust_target": "crates/assets/src/slot_machine_reels.rs",
+          "spec": "S-4",
+          "status": "ported"
+        },
+        "sReelTimeSymbols": {
+          "reason": "src/slot_machine.c:5298-5300 sReelTimeSymbols, six stored digits (REELTIME_SYMBOLS is 6 at src/slot_machine.c:38) read by GetReelTimeSymbol (src/slot_machine.c:2192-2198). Transcribed as ReelTimeNumber behind reel_time_strip and reel_time_number_at, which refuses an out-of-range position. A Reel Time number is not a SYMBOL_* reel symbol. Pinned position by position from an independent fixture, plus an ignored test that re-parses src/slot_machine.c. Data only: spinning, position selection, odds, animation and awards are NOT modelled.",
+          "rust_target": "crates/assets/src/slot_machine_reel_time.rs",
           "spec": "S-4",
           "status": "ported"
         }
