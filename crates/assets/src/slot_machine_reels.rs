@@ -7,8 +7,9 @@
 //! Reels are ordered left, middle, right. A strip is read from position `0`
 //! in upstream order, and a starting position is an index into that strip.
 //! Every lookup refuses a reel, symbol or position that is out of range
-//! instead of clamping it. The `sReelTimeSymbols` strip, the odds, the stop
-//! logic, the payouts and the coin changes are not ported here.
+//! instead of clamping it. The Reel Time number strip is a separate table
+//! (see [`crate::slot_machine_reel_time`]). The odds, the stop logic, the
+//! payouts and the coin changes are not ported here.
 
 use std::error::Error;
 use std::fmt;

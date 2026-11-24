@@ -26,7 +26,8 @@
 //! [`battle_pike_wild_mons`]), the Battle Pyramid floor-item and Pickup
 //! distributions (see [`battle_pyramid_items`]), the Trainer Hill prize
 //! lists (see [`trainer_hill_prizes`]), the slot-machine reel strips and
-//! starting positions (see [`slot_machine_reels`]), the region-map section
+//! starting positions (see [`slot_machine_reels`]), the Reel Time number
+//! strip (see [`slot_machine_reel_time`]), the region-map section
 //! grid (see [`region_map_layout`]), and the Battle Palace per-nature
 //! move-group, target and flavor tables (see [`battle_palace`]); more data
 //! follows as the crate fills out.
@@ -89,6 +90,7 @@ pub mod pokenav_city_maps;
 pub mod region_map_layout;
 pub mod ribbon_descriptions;
 pub mod script_refs;
+pub mod slot_machine_reel_time;
 pub mod slot_machine_reels;
 pub mod species;
 pub mod species_names;
@@ -202,6 +204,9 @@ pub use pokedex::{
 };
 pub use ribbon_descriptions::{
     NormalRibbonId, RibbonDescription, RibbonDescriptionTable, RibbonError, NORMAL_RIBBON_COUNT,
+};
+pub use slot_machine_reel_time::{
+    reel_time_number_at, reel_time_strip, ReelTimeError, ReelTimeNumber, REEL_TIME_LENGTH,
 };
 pub use slot_machine_reels::{
     initial_position, reel_strip, symbol_at, Reel, ReelSymbol, SlotMachineError, StartKind,
